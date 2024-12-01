@@ -1,0 +1,10 @@
+﻿student_id,class_id,status
+1,101,enrolled
+2,102,waitlisted
+3,102,enrolled
+4,102,enrolled
+1,103,enrolled
+4,103,enrolled
+5,104,waitlisted
+6,104,waitlisted
+7,104,enrolled
