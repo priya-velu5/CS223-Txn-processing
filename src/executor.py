@@ -10,20 +10,20 @@ def execute_hop(hop, locks_acquired):
     Execute a single hop with locking. If the hop fails, return False.
     """
     resource = hop["resource"]
+    print(f"Acquiring lock for resource: {resource}")
     
     # Acquire a lock for the resource
     lock_manager.acquire(resource)
     locks_acquired.append(resource)
     
     try:
-        # Execute the action defined in the hop
         success = hop["action"]()
         if not success:
             print(f"Hop failed on resource: {resource}")
             raise Exception(f"Hop failed on resource: {resource}")
     except Exception as e:
         print(f"Error during hop execution: {e}")
-        raise  # Propagate the exception to the chain executor
+        raise  # Propagate the exception to stop the chain
     return True
 
 def execute_chain(chain):

@@ -46,6 +46,7 @@ def add_student(s):
     return True
 
 def update_class(c):
+    print("Current classes:", node2_data["classes"])
     cls = next((cls for cls in node2_data["classes"] if cls["class_id"] == c), None)
     if not cls:
         print(f"Class {c} does not exist.")
@@ -61,26 +62,27 @@ def update_status(s, c):
 Transaction 2: Assign advisor to student
 """
 
-def assign_advisor(s, advisor_name):
-    def hop1():
-        # Node1: Add student
-        node1_data["students"].append({"student_id": s})
-        return True
+# def assign_advisor(s, advisor_name):
+#     def hop1():
+#         # Node1: Add student
+#         node1_data["students"].append({"student_id": s})
+#         return True
 
-    def hop2():
-        # Node3: Find professor ID
-        professor = next((p for p in node3_data["professors"] if p["name"] == advisor_name), None)
-        if not professor:
-            print(f"Advisor {advisor_name} not found.")
-            return False
-        return professor["professor_id"]
+#     def hop2():
+#         # Node3: Find professor ID
+#         professor = next((p for p in node3_data["professors"] if p["name"] == advisor_name), None)
+#         if not professor:
+#             print(f"Advisor {advisor_name} not found.")
+#             return False
+#         return professor["professor_id"]
 
-    def hop3(professor_id):
-        # Node1: Add to advisor table
-        node1_data["advisor"].append({"student_id": s, "professor_id": professor_id})
-        return True
+#     def hop3(professor_id):
+#         # Node1: Add to advisor table
+#         node1_data["advisor"].append({"student_id": s, "professor_id": professor_id})
+#         return True
 
-    return [hop1, hop2, hop3]
+#     return [hop1, hop2, hop3]
+
 
 """
 Transaction 3: Add professor

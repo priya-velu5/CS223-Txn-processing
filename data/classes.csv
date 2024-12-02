@@ -1,5 +1,5 @@
 ﻿class_id,title,capacity,enrolled,waitlist,status
-101,Databases,20,20,1,open
-102,AI,50,50,5,open
+101,Databases,25,20,0,open
+102,AI,55,50,0,open
 103,ML,15,7,0,closed
 104,Blockchain,10,10,2,open

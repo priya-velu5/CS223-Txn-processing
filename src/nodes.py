@@ -18,7 +18,6 @@ node3_data = {
 }
 
 # Function to initialize data from CSV
-from src.utils.io import load_csv
 
 def initialize_nodes():
     node1_data["students"] = pd.read_csv("data/students.csv")
