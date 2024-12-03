@@ -1,5 +1,6 @@
 # src/locks.py
 import threading
+
 class LockManager:
     def __init__(self):
         self.locks = {}

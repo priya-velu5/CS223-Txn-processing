@@ -1,14 +1,16 @@
 # src/main.py
-from src.transactions import enroll_student
-from src.executor import execute_chains_in_parallel
-from src.nodes import initialize_nodes
+from transactions import enroll_student, assign_advisor, add_professor, add_student
+from executor import execute_chains_in_parallel
+from nodes import initialize_nodes
 
 if __name__ == "__main__":
     initialize_nodes()
     # Example transactions
     chains = [
-        enroll_student(s=8, c=101),
-        enroll_student(s=9, c=102),
+       enroll_student(5, "Elise", 101, []),
+       assign_advisor(6, "Fred", [], [], "Baldi"),
+       add_professor(504, "Ihler", [], 4),
+       add_student(103, 7, "Greg", [], [])
     ]
 
     results = execute_chains_in_parallel(chains)

@@ -1,7 +1,7 @@
 # src/executor.py
 
 from concurrent.futures import ThreadPoolExecutor
-from src.locks import LockManager
+from locks import LockManager
 
 lock_manager = LockManager()
 
@@ -10,7 +10,6 @@ def execute_hop(hop, locks_acquired):
     Execute a single hop with locking. If the hop fails, return False.
     """
     resource = hop["resource"]
-    print(f"Acquiring lock for resource: {resource}")
     
     # Acquire a lock for the resource
     lock_manager.acquire(resource)
@@ -18,6 +17,7 @@ def execute_hop(hop, locks_acquired):
     
     try:
         success = hop["action"]()
+        print("success", success)
         if not success:
             print(f"Hop failed on resource: {resource}")
             raise Exception(f"Hop failed on resource: {resource}")
