@@ -1,11 +1,14 @@
-# src/main.py
+# # src/main.py
+
 from transactions import enroll_student, assign_advisor, add_professor, add_student
-from executor import execute_chains_in_parallel
+from executor import execute_chains_in_parallel_with_nodes, export_metrics
 from nodes import initialize_nodes
 
 if __name__ == "__main__":
+    # Initialize data
     initialize_nodes()
-    # Example transactions
+
+    # Define chains
     chains = [
        enroll_student(5, "Elise", 101, []),
        assign_advisor(6, "Fred", [], [], "Baldi"),
@@ -13,5 +16,8 @@ if __name__ == "__main__":
        add_student(103, 7, "Greg", [], [])
     ]
 
-    results = execute_chains_in_parallel(chains)
+    # Execute chains
+    results = execute_chains_in_parallel_with_nodes(chains)
     print("Execution results:", results)
+
+    export_metrics()

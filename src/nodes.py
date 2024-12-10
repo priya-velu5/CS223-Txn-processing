@@ -28,6 +28,16 @@ def process_ids(ids):
     else:
         return [str(ids)]
 
+def get_node_for_resource(resource):
+    if "students" in resource or "advisor" in resource:
+        return "node1"
+    elif "classes" in resource:
+        return "node2"
+    elif "status" in resource or "professors" in resource:
+        return "node3"
+    else:
+        raise ValueError(f"Unknown resource: {resource}")
+
 # Function to initialize data from CSV
 def initialize_nodes():
     # process students data

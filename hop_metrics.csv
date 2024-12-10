@@ -1,0 +1,8 @@
+Transaction ID,Hop ID,Resource,Node,Execution Time (s)
+2,0,professors-504,node3,8.870899910107255e-05
+0,0,students-5,node1,3.237499913666397e-05
+1,0,students-6,node1,3.9291990105994046e-05
+1,1,advisor-6-503,node1,4.375004209578037e-06
+2,1,advisor-4-504,node1,0.00013250000483822078
+0,1,classes-101,node2,0.00014545900921802968
+0,2,status-5-101,node3,9.891600348055363e-05
