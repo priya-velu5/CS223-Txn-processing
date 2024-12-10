@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from nodes import get_node_for_resource
 import time
 import pandas as pd
+import networkx as nx
 
 # Global variable to store the last node executed for each chain
 last_node_for_chain = {}
@@ -25,6 +26,13 @@ node_executors = {
 
 lock_manager = LockManager()
 
+# Two queues: ready and delayed
+ready_queue = []
+delayed_queue = []
+
+sc_graph = nx.DiGraph()
+
+
 def simulate_latency(chain_id, current_node):
     """
     Simulate latency between hops if they are on different nodes within the same transaction (chain).
@@ -40,6 +48,7 @@ def simulate_latency(chain_id, current_node):
     
     # Update the last node for the current chain
     last_node_for_chain[chain_id] = current_node
+
 
 def execute_hop_node(hop, node_name, chain_id, hop_id):
     """
@@ -71,26 +80,75 @@ def execute_hop_node(hop, node_name, chain_id, hop_id):
     print(f"Hop on resource {hop['resource']} completed in {hop_execution_time:.4f} seconds.")
     return result
 
-def execute_hop(hop, locks_acquired): 
+
+def add_chain_to_sc_graph(chain_id, chain):
     """
-    Execute a single hop with locking. If the hop fails, return False.
+    Add a transaction chain to the SC-Graph and check for cycles.
     """
-    resource = hop["resource"]
-    
-    # Acquire a lock for the resource
-    lock_manager.acquire(resource)
-    locks_acquired.append(resource)
-    
     try:
-        success = hop["action"]()
-        print("success", success)
-        if not success:
-            print(f"Hop failed on resource: {resource}")
-            raise Exception(f"Hop failed on resource: {resource}")
-    except Exception as e:
-        print(f"Error during hop execution: {e}")
-        raise  # Propagate the exception to stop the chain
-    return True
+        for hop in chain:
+            resource = hop["resource"]
+            sc_graph.add_edge(chain_id, resource)
+            print(f"Adding {hop["resource"]} to graph.")
+
+        nx.find_cycle(sc_graph, orientation="original")
+
+        for hop in chain:
+            resource = hop["resource"]
+            sc_graph.remove_edges_from([(chain_id, resource) for hop in chain])
+        print("Found cycle")
+        return False  # Cycle detected
+    except nx.exception.NetworkXNoCycle:
+        return True  # No cycles
+
+
+def reevaluate_delayed_queue():
+    """
+    Reevaluate delayed transactions to check if they can be moved to the ready queue.
+    """
+    for chain_id, chain in delayed_queue[:]:
+        if add_chain_to_sc_graph(chain_id, chain):
+            delayed_queue.remove((chain_id, chain))
+            ready_queue.append((chain_id, chain))
+
+
+def execute_chains(chains):
+    """
+    Add chains to queues and process them.
+    """
+    results = {}
+
+    for chain_id, chain in enumerate(chains):
+        # add chain to appropriate queue
+        if add_chain_to_sc_graph(chain_id, chain):
+            ready_queue.append((chain_id, chain))
+        else:
+            delayed_queue.append((chain_id, chain))
+
+    # process ready queue
+    while ready_queue:
+        chain_id, chain = ready_queue.pop(0)
+        try:
+            execute_chain_with_node_pools(chain, chain_id)
+            results[chain_id] = True
+        except Exception as e:
+            results[chain_id] = False
+            print(f"Chain {chain_id} failed with error {e}")
+
+    reevaluate_delayed_queue()
+    while delayed_queue:
+        for chain_id, chain in delayed_queue[:]:
+            if add_chain_to_sc_graph(chain_id, chain):
+                delayed_queue.remove((chain_id, chain))
+                try:
+                    execute_chain_with_node_pools(chain, chain_id)
+                    results[chain_id] = True
+                except Exception as e:
+                    results[chain_id] = False
+                    print(f"Chain {chain_id} failed with error {e}")
+
+    return results
+
 
 
 # def execute_chain_with_node_pools(chain, chain_id):
@@ -99,11 +157,10 @@ def execute_hop(hop, locks_acquired):
 #     """
 #     results = []
 #     start_time = time.perf_counter()  # Start time for the transaction
-
 #     try:
-#         for hop in chain:
+#         for hop_id, hop in enumerate(chain):
 #             node_name = get_node_for_resource(hop["resource"])  # Determine the node for this hop
-#             future = node_executors[node_name].submit(execute_hop_node, hop, node_name, chain_id)
+#             future = node_executors[node_name].submit(execute_hop_node, hop, node_name, chain_id, hop_id)
 #             results.append(future.result())
 
 #             # If any hop fails, stop the chain
@@ -112,27 +169,24 @@ def execute_hop(hop, locks_acquired):
 #                 return False
 #         print("Chain executed successfully.")
 #         return True
-#     except Exception as e:
-#         print(f"Error during chain execution: {e}")
-#         return False
+#     finally:
+#         end_time = time.perf_counter()  # End time for the transaction
+#         transaction_latency = end_time - start_time
+#         print(f"Transaction {chain_id} completed in {transaction_latency:.4f} seconds.")
+
 def execute_chain_with_node_pools(chain, chain_id):
     """
     Execute a transaction chain by submitting hops to node-specific thread pools.
     """
-    results = []
-    start_time = time.perf_counter()  # Start time for the transaction
+    start_time = time.perf_counter()
     try:
         for hop_id, hop in enumerate(chain):
-            node_name = get_node_for_resource(hop["resource"])  # Determine the node for this hop
+            node_name = get_node_for_resource(hop["resource"])
             future = node_executors[node_name].submit(execute_hop_node, hop, node_name, chain_id, hop_id)
-            results.append(future.result())
-
-            # If any hop fails, stop the chain
-            if not results[-1]:
-                print(f"Chain failed at hop: {hop['resource']}")
-                return False
-        print("Chain executed successfully.")
-        return True
+            future.result()
+        print(f"Chain {chain_id} executed successfully.")
+    except Exception as e:
+        print(f"Error during chain execution: {e}")
     finally:
         end_time = time.perf_counter()  # End time for the transaction
         transaction_latency = end_time - start_time
@@ -148,8 +202,8 @@ def execute_chains_in_parallel_with_nodes(chains):
         results = [future.result() for future in futures]
     return results
 
-node_metrics = []
 
+node_metrics = []
 def collect_node_metrics():
     """
     Aggregate node-level metrics into a DataFrame.
@@ -161,6 +215,7 @@ def collect_node_metrics():
             "Total Execution Time (s)": metrics["execution_time"]
         })
     return pd.DataFrame(node_metrics)
+
 
 def export_metrics():
     """
