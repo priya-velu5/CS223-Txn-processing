@@ -75,31 +75,46 @@ def execute_hop_node(hop, node_name, chain_id, hop_id):
     # Update node-level metrics
     node_metrics_data[node_name]["hops"] += 1
     node_metrics_data[node_name]["execution_time"] += hop_execution_time
-
-
     print(f"Hop on resource {hop['resource']} completed in {hop_execution_time:.4f} seconds.")
     return result
 
-
-def add_chain_to_sc_graph(chain_id, chain):
+def execute_chains(chains):
     """
-    Add a transaction chain to the SC-Graph and check for cycles.
+    Add chains to queues and process them, handling SC-Graph conflicts and delays.
     """
-    try:
-        for hop in chain:
-            resource = hop["resource"]
-            sc_graph.add_edge(chain_id, resource)
-            print(f"Adding {hop["resource"]} to graph.")
+    results = {}
 
-        nx.find_cycle(sc_graph, orientation="original")
+    for chain_id, chain in enumerate(chains):
+        # Add chain to SC-Graph
+        if add_chain_to_sc_graph(chain_id, chain):
+            ready_queue.append((chain_id, chain))
+        else:
+            delayed_queue.append((chain_id, chain))
 
-        for hop in chain:
-            resource = hop["resource"]
-            sc_graph.remove_edges_from([(chain_id, resource) for hop in chain])
-        print("Found cycle")
-        return False  # Cycle detected
-    except nx.exception.NetworkXNoCycle:
-        return True  # No cycles
+    # Process ready queue
+    while ready_queue:
+        chain_id, chain = ready_queue.pop(0)
+        try:
+            execute_chain_with_node_pools(chain, chain_id)
+            results[chain_id] = True
+        except Exception as e:
+            results[chain_id] = False
+            print(f"Chain {chain_id} failed with error {e}")
+
+    # Process delayed queue
+    reevaluate_delayed_queue()
+    while delayed_queue:
+        for chain_id, chain in delayed_queue[:]:
+            if add_chain_to_sc_graph(chain_id, chain):
+                delayed_queue.remove((chain_id, chain))
+                try:
+                    execute_chain_with_node_pools(chain, chain_id)
+                    results[chain_id] = True
+                except Exception as e:
+                    results[chain_id] = False
+                    print(f"Delayed chain {chain_id} failed with error {e}")
+
+    return results
 
 
 def reevaluate_delayed_queue():
@@ -111,68 +126,76 @@ def reevaluate_delayed_queue():
             delayed_queue.remove((chain_id, chain))
             ready_queue.append((chain_id, chain))
 
-
-def execute_chains(chains):
+def remove_transaction_from_graph(transaction_id):
     """
-    Add chains to queues and process them.
+    Remove all nodes and edges of a transaction from the SC-Graph.
     """
-    results = {}
+    nodes_to_remove = [node for node in sc_graph.nodes if node.startswith(f"{transaction_id}-")]
+    sc_graph.remove_nodes_from(nodes_to_remove)
+    print(f"Removed transaction {transaction_id} from SC-Graph.")
 
-    for chain_id, chain in enumerate(chains):
-        # add chain to appropriate queue
-        if add_chain_to_sc_graph(chain_id, chain):
-            ready_queue.append((chain_id, chain))
+def detect_cycle():
+    """
+    Detect if there is a cycle in the SC-Graph.
+    Return True if a cycle is detected, else False.
+    """
+    try:
+        cycle_nodes = list(nx.find_cycle(sc_graph, orientation="original"))
+        cycle_weight = sum(sc_graph.edges[edge]["weight"] for edge in cycle_nodes)
+        if cycle_weight > 0:  # SC-cycle (contains at least one S-edge)
+            return True, cycle_nodes
         else:
-            delayed_queue.append((chain_id, chain))
+            print("Cycle detected but ignored (C-cycle only).")
+            return False, None
+    except nx.exception.NetworkXNoCycle:
+        return False, None
 
-    # process ready queue
-    while ready_queue:
-        chain_id, chain = ready_queue.pop(0)
-        try:
-            execute_chain_with_node_pools(chain, chain_id)
-            results[chain_id] = True
-        except Exception as e:
-            results[chain_id] = False
-            print(f"Chain {chain_id} failed with error {e}")
+def has_conflict(hop, existing_node):
+    """
+    Determine if a conflict exists between the current hop and an existing node.
+    For now, assume all hops on the same resource conflict.
+    """
+    resource = hop["resource"]
+    _, existing_hop_id = existing_node.split("-")
+    # Example: Conflict if accessing the same resource
+    return resource in existing_hop_id
 
-    reevaluate_delayed_queue()
-    while delayed_queue:
-        for chain_id, chain in delayed_queue[:]:
-            if add_chain_to_sc_graph(chain_id, chain):
-                delayed_queue.remove((chain_id, chain))
-                try:
-                    execute_chain_with_node_pools(chain, chain_id)
-                    results[chain_id] = True
-                except Exception as e:
-                    results[chain_id] = False
-                    print(f"Chain {chain_id} failed with error {e}")
+def add_chain_to_sc_graph(chain_id, chain):
+    """
+    Add a transaction chain to the SC-Graph and check for cycles.
+    """
+    global sc_graph
+    previous_node = None  # Keep track of the last node for S-edges
+    
+    for hop_id, hop in enumerate(chain):
+        current_node = f"{chain_id}-{hop_id}"  # Unique node identifier (transaction ID and hop ID)
+        sc_graph.add_node(current_node)
+        
+        # Add S-edge for sequential hops in the same transaction
+        if previous_node:
+            sc_graph.add_edge(previous_node, current_node, weight=1)  # S-edge (weight = 1)
+        
+        # Check for conflicts with other transactions
+        for existing_node in sc_graph.nodes:
+            existing_transaction, _ = existing_node.split("-")
+            if existing_transaction != str(chain_id):  # Conflict with a different transaction
+                if has_conflict(hop, existing_node):  # Define `has_conflict`
+                    sc_graph.add_edge(existing_node, current_node, weight=0)  # C-edge (weight = 0)
+        
+        previous_node = current_node  # Update the last node
 
-    return results
+        # Check for cycles after adding the edge
+        has_cycle, cycles = detect_cycle()
+        if has_cycle:
+            print(f"Cycle detected: {cycles}")
+            remove_transaction_from_graph(chain_id)  # Remove this transaction
+            delayed_queue.append((chain_id, chain))  # Move to delayed queue
+            return False
+    
+    print(f"Transaction {chain_id} successfully added to SC-Graph.")
+    return True
 
 
-
-# def execute_chain_with_node_pools(chain, chain_id):
-#     """
-#     Execute a transaction chain by submitting hops to node-specific thread pools.
-#     """
-#     results = []
-#     start_time = time.perf_counter()  # Start time for the transaction
-#     try:
-#         for hop_id, hop in enumerate(chain):
-#             node_name = get_node_for_resource(hop["resource"])  # Determine the node for this hop
-#             future = node_executors[node_name].submit(execute_hop_node, hop, node_name, chain_id, hop_id)
-#             results.append(future.result())
-
-#             # If any hop fails, stop the chain
-#             if not results[-1]:
-#                 print(f"Chain failed at hop: {hop['resource']}")
-#                 return False
-#         print("Chain executed successfully.")
-#         return True
-#     finally:
-#         end_time = time.perf_counter()  # End time for the transaction
-#         transaction_latency = end_time - start_time
-#         print(f"Transaction {chain_id} completed in {transaction_latency:.4f} seconds.")
 
 def execute_chain_with_node_pools(chain, chain_id):
     """
