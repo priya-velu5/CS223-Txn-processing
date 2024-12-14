@@ -7,6 +7,8 @@ from nodes import get_node_for_resource
 import time
 import pandas as pd
 import networkx as nx
+import matplotlib.pyplot as plt
+
 
 # Global variable to store the last node executed for each chain
 last_node_for_chain = {}
@@ -78,14 +80,11 @@ def execute_hop_node(hop, node_name, chain_id, hop_id):
     print(f"Hop on resource {hop['resource']} completed in {hop_execution_time:.4f} seconds.")
     return result
 
+
 def execute_chains(chains):
-    """
-    Add chains to queues and process them, handling SC-Graph conflicts and delays.
-    """
     results = {}
 
     for chain_id, chain in enumerate(chains):
-        # Add chain to SC-Graph
         if add_chain_to_sc_graph(chain_id, chain):
             ready_queue.append((chain_id, chain))
         else:
@@ -100,39 +99,26 @@ def execute_chains(chains):
         except Exception as e:
             results[chain_id] = False
             print(f"Chain {chain_id} failed with error {e}")
+            delayed_queue.append((chain_id, chain))
 
-    # Process delayed queue
-    reevaluate_delayed_queue()
+    # Process delayed queue with proper delay
     while delayed_queue:
-        for chain_id, chain in delayed_queue[:]:
-            if add_chain_to_sc_graph(chain_id, chain):
-                delayed_queue.remove((chain_id, chain))
-                try:
-                    execute_chain_with_node_pools(chain, chain_id)
-                    results[chain_id] = True
-                except Exception as e:
-                    results[chain_id] = False
-                    print(f"Delayed chain {chain_id} failed with error {e}")
-
+        chain_id, chain = delayed_queue.pop(0)
+        try:
+            execute_chain_with_node_pools(chain, chain_id)
+            results[chain_id] = True
+        except Exception as e:
+            results[chain_id] = False
+            print(f"Chain {chain_id} failed with error {e}")
+    
     return results
-
-
-def reevaluate_delayed_queue():
-    """
-    Reevaluate delayed transactions to check if they can be moved to the ready queue.
-    """
-    for chain_id, chain in delayed_queue:
-        if len(ready_queue) == 0:
-            delayed_queue.remove((chain_id, chain))
-            ready_queue.append((chain_id, chain))
-        else:
-            time.sleep(0.5)
 
 
 def remove_transaction_from_graph(transaction_id):
     """
     Remove all nodes and edges of a transaction from the SC-Graph.
     """
+    global sc_graph
     nodes_to_remove = [node for node in sc_graph.nodes if node.startswith(f"T{transaction_id+1}-")]
     sc_graph.remove_nodes_from(nodes_to_remove)
     print(f"Removed transaction {transaction_id+1} from SC-Graph.")
@@ -232,11 +218,13 @@ def add_chain_to_sc_graph(chain_id, chain):
         has_cycle, cycles = detect_cycle()
         if has_cycle:
             print(f"Cycle detected: {cycles}")
-            remove_transaction_from_graph(chain_id)  # Remove this transaction
-            delayed_queue.append((chain_id, chain))  # Move to delayed queue
+            remove_transaction_from_graph(chain_id)
+            delayed_queue.append((chain_id, chain))
             return False
     
     print(f"Transaction {chain_id+1} successfully added to SC-Graph.")
+    nx.draw(sc_graph, with_labels=True)
+    plt.show()
     return True
 
 
@@ -257,18 +245,6 @@ def execute_chain_with_node_pools(chain, chain_id):
         end_time = time.perf_counter()  # End time for the transaction
         transaction_latency = end_time - start_time
         print(f"Transaction {chain_id+1} completed in {transaction_latency:.4f} seconds.")
-
-
-# def execute_chains_in_parallel_with_nodes(chains):
-#     """
-#     Execute multiple transaction chains in parallel, isolating execution by nodes.
-#     """
-#     with ThreadPoolExecutor() as chain_executor:
-#         futures = [chain_executor.submit(execute_chain_with_node_pools, chain, chain_id) for chain_id, chain in enumerate(chains)]
-#         results = [future.result() for future in futures]
-
-#     print(sc_graph.edges)
-#     return results
 
 
 node_metrics = []

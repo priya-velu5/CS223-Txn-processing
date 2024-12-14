@@ -10,9 +10,9 @@ if __name__ == "__main__":
 
    # Define chains
    chains = [
-      # enroll_student(5, "Elise", 101, []),
-      # assign_advisor(6, "Fred", [], [], "Baldi"),
-      # add_professor(504, "Ihler", [], 4),
+      enroll_student(5, "Elise", 101, []),
+      assign_advisor(6, "Fred", [], [], "Baldi"),
+      add_professor(504, "Ihler", [], 4),
       add_student(102, 7, "Greg", [], []),
       remove_student_from_classes(3),  # SC-cycle causing transaction
    ]
