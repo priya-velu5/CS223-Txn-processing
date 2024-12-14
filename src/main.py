@@ -1,6 +1,6 @@
 # # src/main.py
 
-from transactions import enroll_student, assign_advisor, add_professor, add_student, enroll_existing_student
+from transactions import enroll_student, assign_advisor, add_professor, add_student, remove_student_from_classes
 from executor import execute_chains, export_metrics
 from nodes import initialize_nodes
 
@@ -10,11 +10,11 @@ if __name__ == "__main__":
 
    # Define chains
    chains = [
-      enroll_student(5, "Elise", 101, []),
-      assign_advisor(6, "Fred", [], [], "Baldi"),
-      enroll_existing_student(2, 103),  # SC-cycle causing transaction
-      add_professor(504, "Ihler", [], 4),
-      add_student(103, 7, "Greg", [], [])
+      # enroll_student(5, "Elise", 101, []),
+      # assign_advisor(6, "Fred", [], [], "Baldi"),
+      # add_professor(504, "Ihler", [], 4),
+      add_student(102, 7, "Greg", [], []),
+      remove_student_from_classes(3),  # SC-cycle causing transaction
    ]
 
    # Execute chains
